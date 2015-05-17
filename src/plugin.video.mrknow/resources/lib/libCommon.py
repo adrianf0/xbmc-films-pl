@@ -42,6 +42,8 @@ method getURLRequestData(params):
 
 import re, os, sys, cookielib, random
 import urllib, urllib2, re, sys, math
+import pycurl
+import re
 #import elementtree.ElementTree as ET
 import xbmcaddon, xbmc, xbmcgui
 try:
@@ -110,10 +112,20 @@ class common:
     
     def getCookieItem(self, cookiefile, item):
 	ret = ''
-	cj = cookielib.MozillaCookieJar()
-	cj.load(cookiefile, ignore_discard = True)
-	for cookie in cj:
-	    if cookie.name == item: ret = cookie.value
+        regex = re.compile(item + "\s*(.+)$")
+        with open(cookiefile) as f:
+            for line in f:
+                res = regex.search(line)
+                if res:
+                    ret =  res.group(1)
+                    break
+	# cj = cookielib.MozillaCookieJar()
+        # print "COOKIE path:" +  cookiefile
+        # print dir(cj)
+        # cj.load(cookiefile, ignore_discard = True)
+	# #cj.load(cookiefile, ignore_discard = True)
+	# for cookie in cj:
+	#     if cookie.name == item: ret = cookie.value
 	return ret
     
     #item = {'name': 'xxx', 'value': 'yyy', 'domain': 'zzz'}
@@ -130,56 +142,129 @@ class common:
     	req = None
     	out_data = None
     	opener = None
-    	headers = { 'User-Agent' : host }
+        request = pycurl.Curl()
+        request.setopt(pycurl.USERAGENT,  host )
+    	#headers = { 'User-Agent' : host }
         if 'use_xml' in params:
-            headers = { 'User-Agent' : host, 'Content-Type': 'text/xml' }
-    	if dbg == 'true':
-    		log.info('pCommon - getURLRequestData() -> params: ' + str(params))
+            request.setopt(pycurl.HTTPHEADER, 'Content-Type: text/xml' )
+            #headers = { 'User-Agent' : host, 'Content-Type': 'text/xml' }
+        if dbg == 'true':
+            log.info('pCommon - getURLRequestData() -> params: ' + str(params))
         if params['use_host']:
         	host = params['host']
         if params['use_cookie']:
-			opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cj))
-			if params['load_cookie']:
-				cj.load(params['cookiefile'], ignore_discard = True)
+            request.setopt(pycurl.COOKIEJAR, params['cookiefile'])
+            #opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cj))
+            if params['load_cookie']:
+                #cj.load(params['cookiefile'], ignore_discard = True)
+                request.setopt(pycurl.COOKIEFILE, params['cookiefile'])
         if params['use_post']:
             #headers = {'User-Agent' : host}
             #log.info('pCommon - getURLRequestData() -> post data: ' + str(post_data))
             if 'use_xml' in params:
-                dataPost = post_data
+                request.setopt(pycurl.POSTFIELDS, post_data)
+                #dataPost = post_data
             else:
-                dataPost = urllib.urlencode(post_data)
-            req = urllib2.Request(params['url'], dataPost, headers)
+                request.setopt(pycurl.POSTFIELDS, urllib.urlencode(post_data))
+                #dataPost = urllib.urlencode(post_data)
+
+            print params['url']
+            request.setopt(pycurl.URL, params['url'] )
+            #req = urllib2.Request(params['url'], dataPost, headers)
         if not params['use_post']:
-            req = urllib2.Request(params['url'])
-            req.add_header('User-Agent', host)
-        if params['use_cookie']:
-            response = opener.open(req)
-        else:
-            response = urllib2.urlopen(req)
+
+            #proxy
+            request.setopt(pycurl.PROXY, 'localhost')
+            request.setopt(pycurl.PROXYPORT, 8080)
+            request.setopt(pycurl.PROXYTYPE, pycurl.PROXYTYPE_SOCKS5)
+            
+            request.setopt(pycurl.URL, params['url'] )
+            #request.setopt(pycurl.HTTPHEADER, ['User-Agent: ' +  host] )
+            #req = urllib2.Request(params['url'])
+            #req.add_header('User-Agent', host)
+
+            print "Wychodze !!"
+        #if params['use_cookie']:
+           # response = opener.open(req)
+        #else:
+            #response = urllib2.urlopen(req)
+        buffer = StringIO.StringIO()
+        request.setopt(pycurl.WRITEFUNCTION, buffer.write)
+        headers = {}
+        def header_function(header_line):
+            # HTTP standard specifies that headers are encoded in iso-8859-1.
+            # On Python 2, decoding step can be skipped.
+            # On Python 3, decoding step is required.
+            header_line = header_line.decode('iso-8859-1')
+
+            # Header lines include the first status line (HTTP/1.x ...).
+            # We are going to ignore all lines that don't have a colon in them.
+            # This will botch headers that are split on multiple lines...
+            if ':' not in header_line:
+                return
+
+            # Break the header line into header name and value.
+            name, value = header_line.split(':', 1)
+
+            # Remove whitespace that may be present.
+            # Header lines include the trailing newline, and there may be whitespace
+            # around the colon.
+            name = name.strip()
+            value = value.strip()
+
+            # Header names are case insensitive.
+            # Lowercase name here.
+            name = name.lower()
+
+            # Now we can actually record the header name and value.
+            headers[name] = value
+        request.setopt(pycurl.HEADERFUNCTION, header_function)
+        request.perform()
+        # HTTP response code, e.g. 200.
+        #print('Status: %d' % request.getinfo(request.RESPONSE_CODE))
+        # Elapsed time for the transfer.
+        #print('Status: %f' % request.getinfo(request.TOTAL_TIME))
+        #print request.getinfo(pycurl.INFO_COOKIELIST)
+        request.close()
+        
         if not params['return_data']:
-        	try:
-	            if params['read_data']:
-	            	out_data = response.read()
-	            else:
-	            	out_data = response
-	        except:
-	        	out_data = response
+            try:
+                if params['read_data']:
+                    out_data = buffer.getvalue()
+                else:
+                    out_data = buffer
+            except:
+                out_data = buffer
+            # try:
+	    #         if params['read_data']:
+	    #         	out_data = response.read()
+	    #         else:
+	    #         	out_data = response
+	    #     except:
+	    #     	out_data = response
         if params['return_data']:
             #
             if params['use_cookie'] == False:
                 #print ("ENC",response.headers.get('content-encoding', ''),params)
-                if response.info().get('Content-Encoding') == 'gzip':
-                    buf = StringIO.StringIO( response.read())
-                    f = gzip.GzipFile(fileobj=buf)
-                    out_data = f.read()
+                if 'Content-Encoding' in headers:
+                    if headers['Content-Encoding'].lower() == 'gzip':
+                # if response.info().get('Content-Encoding') == 'gzip':
+                #     buf = StringIO.StringIO( response.read())
+                #     f = gzip.GzipFile(fileobj=buf)
+                # out_data = f.read()
+                        f = gzip.GzipFile(fileobj=buffer)
+                        out_data = f.read()
                 else:
-                    out_data = response.read()
+                    out_data = buffer.getvalue()
+                    # out_data = response.read()
             else:
-                out_data = response.read()
-            
-            response.close()
-        if params['use_cookie'] and params['save_cookie']:
-        	cj.save(params['cookiefile'], ignore_discard = True)
+                out_data = buffer.getvalue()
+                # out_data = response.read()
+
+            buffer.close()
+            # response.close()
+        # if params['use_cookie'] and params['save_cookie']:
+        # 	cj.save(params['cookiefile'], ignore_discard = True)
         return out_data 
                
     def makeABCList(self):

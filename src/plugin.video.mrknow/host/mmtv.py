@@ -22,7 +22,8 @@ chanels = 'https://www.mmtv.pl/FrontOffice/ApiliveProductsList.go?platform='+ptv
 playerUrl = 'https://www.mmtv.pl/FrontOffice/LiveAvailability.go'
 loginUrl = 'https://www.mmtv.pl/FrontOffice/ApisubscriberLogin.go'
 
-HOST = 'User-Agent: mm-ott/0.1 CFNetwork/609.1.4 Darwin/13.0.0'
+#HOST = 'User-Agent: mm-ott/0.1 CFNetwork/609.1.4 Darwin/13.0.0'
+HOST = 'Mozilla/5.0 (Windows NT 6.1; rv:17.0) Gecko/20100101 Firefox/17.0'
 
 MENU_TAB = {1: "Wszystkie",
             3: "Szukaj" }
